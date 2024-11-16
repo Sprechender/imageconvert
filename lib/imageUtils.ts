@@ -26,6 +26,9 @@ export const qualityMap: QualityMap = {
   }
 };
 
+// Cache for storing converted blobs to avoid reconverting
+const blobCache = new Map<string, Blob>();
+
 /**
  * Automatically determines optimal quality setting based on file size and format
  * @param file - The image file to analyze
@@ -58,21 +61,26 @@ export async function convertImage(
   format: string,
   quality: number
 ): Promise<Blob> {
-  const img = new window.Image();
-  const canvas = document.createElement('canvas');
-  const ctx = canvas.getContext('2d');
+  // Generate cache key
+  const cacheKey = `${file.name}-${format}-${quality}`;
   
-  // Create temporary object URL for loading image
-  const objectUrl = URL.createObjectURL(file);
-  img.src = objectUrl;
+  // Check cache first
+  const cachedBlob = blobCache.get(cacheKey);
+  if (cachedBlob) {
+    return cachedBlob;
+  }
+
+  // Create and reuse canvas element
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d', { alpha: format === 'png' });
+  
+  // Load image using createImageBitmap for better performance
+  const bitmap = await createImageBitmap(file);
+  canvas.width = bitmap.width;
+  canvas.height = bitmap.height;
+  ctx?.drawImage(bitmap, 0, 0);
   
   try {
-    // Wait for image to load
-    await new Promise((resolve) => (img.onload = resolve));
-    canvas.width = img.width;
-    canvas.height = img.height;
-    ctx?.drawImage(img, 0, 0);
-    
     // Convert canvas to blob with specified format and quality
     const blob = await new Promise<Blob>((resolve, reject) => {
       canvas.toBlob(
@@ -82,10 +90,13 @@ export async function convertImage(
       );
     });
     
+    // Cache the result
+    blobCache.set(cacheKey, blob);
+    
     return blob;
   } finally {
-    // Clean up object URL
-    URL.revokeObjectURL(objectUrl);
+    // Clean up resources
+    bitmap.close();
   }
 }
 

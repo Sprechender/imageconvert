@@ -1,8 +1,8 @@
 export interface QualitySettings {
-  tiny: number;
-  small: number;
-  medium: number;
-  large: number;
-  xlarge: number;
-  huge: number;
-} 
+  readonly tiny: number;
+  readonly small: number;
+  readonly medium: number;
+  readonly large: number;
+  readonly xlarge: number;
+  readonly huge: number;
+}

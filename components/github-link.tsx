@@ -4,16 +4,16 @@ import * as React from "react"
 import { Github } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
-export function GithubLink() {
+export const GithubLink = React.memo(function GithubLink() {
   return (
     <Button
-      variant="outline"
+      variant="outline" 
       size="icon"
       asChild
     >
-      <a 
-        href="https://github.com/Sprechender/imageconvert" 
-        target="_blank" 
+      <a
+        href="https://github.com/Sprechender/imageconvert"
+        target="_blank"
         rel="noopener noreferrer"
       >
         <Github className="h-[1.2rem] w-[1.2rem]" />
@@ -21,4 +21,4 @@ export function GithubLink() {
       </a>
     </Button>
   )
-} 
+})

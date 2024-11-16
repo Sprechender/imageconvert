@@ -3,15 +3,21 @@ import localFont from "next/font/local";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider"
 
+// Preload fonts with display: swap for better performance
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",
   variable: "--font-geist-sans",
   weight: "100 900",
+  display: "swap",
+  preload: true,
 });
+
 const geistMono = localFont({
-  src: "./fonts/GeistMonoVF.woff",
+  src: "./fonts/GeistMonoVF.woff", 
   variable: "--font-geist-mono",
   weight: "100 900",
+  display: "swap",
+  preload: true,
 });
 
 export const metadata: Metadata = {
@@ -31,9 +37,10 @@ export default function RootLayout({
           dangerouslySetInnerHTML={{
             __html: `
               try {
-                let isDark = window.localStorage.getItem('theme') === 'dark' || 
-                  (!window.localStorage.getItem('theme') && window.matchMedia('(prefers-color-scheme: dark)').matches)
-                document.documentElement.classList[isDark ? 'add' : 'remove']('dark')
+                const theme = localStorage.getItem('theme');
+                const isDark = theme === 'dark' || 
+                  (!theme && matchMedia('(prefers-color-scheme: dark)').matches);
+                if(isDark) document.documentElement.classList.add('dark');
               } catch (e) {}
             `,
           }}

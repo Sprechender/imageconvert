@@ -1,6 +1,6 @@
 'use client';
 import Image from "next/image";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useDropzone } from 'react-dropzone';
 
 import { Button } from "@/components/ui/button"
@@ -41,7 +41,7 @@ export default function Home() {
   const supportsQuality = ['jpeg', 'webp'].includes(format);
   const [error, setError] = useState<string | null>(null);
 
-  const handleFileDrop = (file: File) => {
+  const handleFileDrop = useCallback((file: File) => {
     setError(null);
     // Limit file size to 20MB
     const maxSize = 20 * 1024 * 1024;
@@ -59,7 +59,7 @@ export default function Home() {
     if (autoQuality) {
       setQuality(getAutoQuality(file, format));
     }
-  };
+  }, [autoQuality, format]);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     accept: {
@@ -75,6 +75,8 @@ export default function Home() {
 
   // Effect for live preview updates when quality/format changes
   useEffect(() => {
+    let isMounted = true;
+    
     const updateLivePreview = async () => {
       if (!selectedFile || !supportsQuality) {
         setLivePreviewUrl(previewUrl);
@@ -86,15 +88,19 @@ export default function Home() {
           URL.revokeObjectURL(livePreviewUrl);
         }
         const newPreviewUrl = await generatePreview(selectedFile, format, quality);
-        setLivePreviewUrl(newPreviewUrl);
+        if (isMounted) {
+          setLivePreviewUrl(newPreviewUrl);
+        }
       } catch (error) {
         console.error('Error updating live preview:', error);
       }
     };
 
-    updateLivePreview();
+    const debounceTimer = setTimeout(updateLivePreview, 150);
 
     return () => {
+      isMounted = false;
+      clearTimeout(debounceTimer);
       if (livePreviewUrl) {
         URL.revokeObjectURL(livePreviewUrl);
       }
@@ -109,7 +115,7 @@ export default function Home() {
     }
   }, [selectedFile, format, autoQuality]);
 
-  const handleConvert = async (e: React.FormEvent) => {
+  const handleConvert = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedFile) return;
 
@@ -131,7 +137,7 @@ export default function Home() {
     } finally {
       setConverting(false);
     }
-  };
+  }, [selectedFile, format, quality]);
 
   return (
     <div className="flex h-screen w-full items-center justify-center px-4 gap-8">
@@ -227,6 +233,7 @@ export default function Home() {
                 alt="Preview"
                 fill
                 className="object-contain"
+                priority
               />
             </div>
           </CardContent>
