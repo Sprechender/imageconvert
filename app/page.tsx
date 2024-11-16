@@ -1,6 +1,7 @@
 'use client';
 import Image from "next/image";
 import { useState, useEffect } from "react";
+import { useDropzone } from 'react-dropzone';
 
 import { Button } from "@/components/ui/button"
 import {
@@ -41,6 +42,38 @@ export default function Home() {
   const supportsQuality = ['jpeg', 'webp'].includes(format);
   const [error, setError] = useState<string | null>(null);
 
+  const handleFileDrop = (file: File) => {
+    setError(null);
+    // Limit file size to 20MB
+    const maxSize = 20 * 1024 * 1024;
+    
+    if (file.size > maxSize) {
+      setError("File size exceeds 20MB limit");
+      return;
+    }
+    
+    // Create preview URL and update state
+    setSelectedFile(file);
+    setPreviewUrl(URL.createObjectURL(file));
+    
+    // Set automatic quality if enabled
+    if (autoQuality) {
+      setQuality(getAutoQuality(file, format));
+    }
+  };
+
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    accept: {
+      'image/*': []
+    },
+    maxFiles: 1,
+    onDrop: acceptedFiles => {
+      if (acceptedFiles.length > 0) {
+        handleFileDrop(acceptedFiles[0]);
+      }
+    }
+  });
+
   // Effect for live preview updates when quality/format changes
   useEffect(() => {
     const updateLivePreview = async () => {
@@ -80,23 +113,7 @@ export default function Home() {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setError(null);
     if (e.target.files?.[0]) {
-      const file = e.target.files[0];
-      // Limit file size to 20MB
-      const maxSize = 20 * 1024 * 1024;
-      
-      if (file.size > maxSize) {
-        setError("File size exceeds 20MB limit");
-        return;
-      }
-      
-      // Create preview URL and update state
-      setSelectedFile(file);
-      setPreviewUrl(URL.createObjectURL(file));
-      
-      // Set automatic quality if enabled
-      if (autoQuality) {
-        setQuality(getAutoQuality(file, format));
-      }
+      handleFileDrop(e.target.files[0]);
     }
   };
 
@@ -142,23 +159,22 @@ export default function Home() {
             {error && (
               <div className="text-red-500 text-sm">{error}</div>
             )}
-            <div className="space-y-2">
-              <Button
-                asChild
-                variant="outline"
-                className="w-full"
-              >
-                <label htmlFor="image" className="w-full">
-                  <Input 
-                    id="image"
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={handleFileChange}
-                  />
-                  Upload Image
-                </label>
-              </Button>
+            <div 
+              {...getRootProps()} 
+              className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors
+                ${isDragActive ? 'border-primary bg-primary/10' : selectedFile ? 'border-primary bg-green-100 dark:bg-green-900/20' : 'border-muted-foreground/25 hover:border-primary'}`}
+            >
+              <input {...getInputProps()} />
+              {isDragActive ? (
+                <p>Drop the image here...</p>
+              ) : selectedFile ? (
+                <p>Image selected - Click or drop to change</p>
+              ) : (
+                <div className="space-y-2">
+                  <p>Drag & drop an image here, or click to select</p>
+                  <p className="text-sm text-muted-foreground">Supports JPEG, PNG, WebP and AVIF</p>
+                </div>
+              )}
             </div>
             <div className="space-y-2">
               <Label htmlFor="format">Convert to</Label>
