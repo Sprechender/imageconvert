@@ -26,10 +26,15 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { getAutoQuality, convertImage, generatePreview } from "@/lib/imageUtils";
 
 export default function Home() {
+  // Add new state for overall page loading
+  const [pageReady, setPageReady] = useState(false);
+  
   // State management for file handling and conversion
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [converting, setConverting] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [showLoading, setShowLoading] = useState(false);
   
   // Image conversion settings
   const [format, setFormat] = useState("jpeg");
@@ -43,11 +48,15 @@ export default function Home() {
 
   const handleFileDrop = useCallback((file: File) => {
     setError(null);
+    setLoading(true);
+    setShowLoading(true);
     // Limit file size to 20MB
     const maxSize = 20 * 1024 * 1024;
     
     if (file.size > maxSize) {
       setError("File size exceeds 20MB limit");
+      setLoading(false);
+      setShowLoading(false);
       return;
     }
     
@@ -59,6 +68,8 @@ export default function Home() {
     if (autoQuality) {
       setQuality(getAutoQuality(file, format));
     }
+    setLoading(false);
+    setShowLoading(false);
   }, [autoQuality, format]);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -76,6 +87,7 @@ export default function Home() {
   // Effect for live preview updates when quality/format changes
   useEffect(() => {
     let isMounted = true;
+    let loadingTimeout: NodeJS.Timeout;
     
     const updateLivePreview = async () => {
       if (!selectedFile || !supportsQuality) {
@@ -84,6 +96,14 @@ export default function Home() {
       }
 
       try {
+        setLoading(true);
+        // Only show loading spinner after 150ms
+        loadingTimeout = setTimeout(() => {
+          if (isMounted) {
+            setShowLoading(true);
+          }
+        }, 150);
+
         if (livePreviewUrl) {
           URL.revokeObjectURL(livePreviewUrl);
         }
@@ -93,6 +113,12 @@ export default function Home() {
         }
       } catch (error) {
         console.error('Error updating live preview:', error);
+      } finally {
+        if (isMounted) {
+          clearTimeout(loadingTimeout);
+          setLoading(false);
+          setShowLoading(false);
+        }
       }
     };
 
@@ -100,6 +126,7 @@ export default function Home() {
 
     return () => {
       isMounted = false;
+      clearTimeout(loadingTimeout);
       clearTimeout(debounceTimer);
       if (livePreviewUrl) {
         URL.revokeObjectURL(livePreviewUrl);
@@ -139,8 +166,22 @@ export default function Home() {
     }
   }, [selectedFile, format, quality]);
 
+  // Add useEffect to handle initial page load
+  useEffect(() => {
+    setPageReady(true);
+  }, []);
+
+  // Modify the return statement
+  if (!pageReady) {
+    return (
+      <div className="flex h-screen w-full items-center justify-center">
+        <div className="w-8 h-8 border-4 border-primary rounded-full border-t-transparent animate-spin"></div>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex h-screen w-full items-center justify-center px-4 gap-8">
+    <div className="flex h-screen w-full items-center justify-center px-4 gap-8 animate-in fade-in duration-500">
       <div className="absolute top-4 right-4 flex items-center gap-2">
         <GithubLink />
         <ThemeToggle />
@@ -228,13 +269,19 @@ export default function Home() {
         <Card className="min-w-[400px] max-w-lg">
           <CardContent className="pt-6">
             <div className="relative aspect-square">
-              <Image
-                src={supportsQuality ? (livePreviewUrl || previewUrl) : previewUrl}
-                alt="Preview"
-                fill
-                className="object-contain"
-                priority
-              />
+              {showLoading ? (
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="w-8 h-8 border-4 border-primary rounded-full border-t-transparent animate-spin"></div>
+                </div>
+              ) : (
+                <Image
+                  src={supportsQuality ? (livePreviewUrl || previewUrl) : previewUrl}
+                  alt="Preview"
+                  fill
+                  className="object-contain"
+                  priority
+                />
+              )}
             </div>
           </CardContent>
         </Card>
