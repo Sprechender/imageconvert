@@ -33,7 +33,6 @@ export default function Home() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [converting, setConverting] = useState(false);
-  const [loading, setLoading] = useState(false);
   const [showLoading, setShowLoading] = useState(false);
   
   // Image conversion settings
@@ -48,14 +47,12 @@ export default function Home() {
 
   const handleFileDrop = useCallback((file: File) => {
     setError(null);
-    setLoading(true);
     setShowLoading(true);
     // Limit file size to 20MB
     const maxSize = 20 * 1024 * 1024;
     
     if (file.size > maxSize) {
       setError("File size exceeds 20MB limit");
-      setLoading(false);
       setShowLoading(false);
       return;
     }
@@ -68,7 +65,6 @@ export default function Home() {
     if (autoQuality) {
       setQuality(getAutoQuality(file, format));
     }
-    setLoading(false);
     setShowLoading(false);
   }, [autoQuality, format]);
 
@@ -96,7 +92,6 @@ export default function Home() {
       }
 
       try {
-        setLoading(true);
         // Only show loading spinner after 150ms
         loadingTimeout = setTimeout(() => {
           if (isMounted) {
@@ -116,7 +111,6 @@ export default function Home() {
       } finally {
         if (isMounted) {
           clearTimeout(loadingTimeout);
-          setLoading(false);
           setShowLoading(false);
         }
       }
