@@ -67,7 +67,7 @@ export default function Home() {
         URL.revokeObjectURL(livePreviewUrl);
       }
     };
-  }, [selectedFile, quality, format, supportsQuality, previewUrl]);
+  }, [selectedFile, quality, format, supportsQuality, previewUrl, livePreviewUrl]);
 
   // Automatically set quality based on file size and format
   useEffect(() => {
