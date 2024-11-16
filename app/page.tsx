@@ -11,7 +11,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
   Select,
@@ -109,13 +108,6 @@ export default function Home() {
       setQuality(automaticQuality);
     }
   }, [selectedFile, format, autoQuality]);
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setError(null);
-    if (e.target.files?.[0]) {
-      handleFileDrop(e.target.files[0]);
-    }
-  };
 
   const handleConvert = async (e: React.FormEvent) => {
     e.preventDefault();
