@@ -139,6 +139,9 @@ export default function Home() {
         </CardHeader>
         <CardContent>
           <form className="space-y-4" onSubmit={handleConvert}>
+            {error && (
+              <div className="text-red-500 text-sm">{error}</div>
+            )}
             <div className="space-y-2">
               <Button
                 asChild
