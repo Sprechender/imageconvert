@@ -84,7 +84,8 @@ export default function Home() {
   useEffect(() => {
     let isMounted = true;
     let loadingTimeout: NodeJS.Timeout;
-    
+    const previewUrl: string | null = null;
+
     const updateLivePreview = async () => {
       if (!selectedFile || !supportsQuality) {
         setLivePreviewUrl(previewUrl);
@@ -92,39 +93,36 @@ export default function Home() {
       }
 
       try {
-        // Only show loading spinner after 150ms
         loadingTimeout = setTimeout(() => {
           if (isMounted) {
             setShowLoading(true);
           }
-        }, 150);
+        }, 250);
 
-        if (livePreviewUrl) {
-          URL.revokeObjectURL(livePreviewUrl);
-        }
         const newPreviewUrl = await generatePreview(selectedFile, format, quality);
+        
         if (isMounted) {
+          if (livePreviewUrl) {
+            setTimeout(() => URL.revokeObjectURL(livePreviewUrl), 100);
+          }
           setLivePreviewUrl(newPreviewUrl);
+          setShowLoading(false);
         }
       } catch (error) {
         console.error('Error updating live preview:', error);
       } finally {
         if (isMounted) {
           clearTimeout(loadingTimeout);
-          setShowLoading(false);
         }
       }
     };
 
-    const debounceTimer = setTimeout(updateLivePreview, 150);
+    const debounceTimer = setTimeout(updateLivePreview, 250);
 
     return () => {
       isMounted = false;
       clearTimeout(loadingTimeout);
       clearTimeout(debounceTimer);
-      if (livePreviewUrl) {
-        URL.revokeObjectURL(livePreviewUrl);
-      }
     };
   }, [selectedFile, quality, format, supportsQuality, previewUrl, livePreviewUrl]);
 
@@ -272,7 +270,7 @@ export default function Home() {
                   src={supportsQuality ? (livePreviewUrl || previewUrl) : previewUrl}
                   alt="Preview"
                   fill
-                  className="object-contain"
+                  className="object-contain preview-image"
                   priority
                 />
               )}

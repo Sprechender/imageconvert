@@ -97,3 +97,9 @@ body {
     @apply bg-background text-foreground;
   }
 }
+
+.preview-image {
+  will-change: transform;
+  backface-visibility: hidden;
+  transform: translateZ(0);
+}
