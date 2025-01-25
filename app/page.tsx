@@ -1,7 +1,8 @@
 'use client';
 import Image from "next/image";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useDropzone } from 'react-dropzone';
+import { Upload, ImageIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button"
 import {
@@ -25,259 +26,389 @@ import { Slider } from "@/components/ui/slider"
 import { Checkbox } from "@/components/ui/checkbox"
 import { getAutoQuality, convertImage, generatePreview } from "@/lib/imageUtils";
 
+interface ImageState {
+  file: File | null;
+  previewUrl: string | null;
+  currentPreviewUrl: string | null;
+  nextPreviewUrl: string | null;
+}
+
+interface ConversionSettings {
+  format: string;
+  quality: number;
+  autoQuality: boolean;
+}
+
 export default function Home() {
-  // Add new state for overall page loading
   const [pageReady, setPageReady] = useState(false);
   
-  // State management for file handling and conversion
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [converting, setConverting] = useState(false);
-  const [showLoading, setShowLoading] = useState(false);
-  
-  // Image conversion settings
-  const [format, setFormat] = useState("jpeg");
-  const [quality, setQuality] = useState(95);
-  const [autoQuality, setAutoQuality] = useState(true);
-  const [livePreviewUrl, setLivePreviewUrl] = useState<string | null>(null);
-  
-  // Only JPEG and WebP support quality adjustment
-  const supportsQuality = ['jpeg', 'webp'].includes(format);
+  const [imageState, setImageState] = useState<ImageState>({
+    file: null,
+    previewUrl: null,
+    currentPreviewUrl: null,
+    nextPreviewUrl: null
+  });
+
+  const [settings, setSettings] = useState<ConversionSettings>({
+    format: 'jpeg',
+    quality: 95,
+    autoQuality: true
+  });
+
+  const [loadingStates, setLoadingStates] = useState({
+    converting: false,
+    preview: false,
+    initial: false
+  });
+
   const [error, setError] = useState<string | null>(null);
+
+  const supportsQuality = useMemo(() => 
+    ['jpeg', 'webp'].includes(settings.format), 
+    [settings.format]
+  );
 
   const handleFileDrop = useCallback((file: File) => {
     setError(null);
-    setShowLoading(true);
-    // Limit file size to 20MB
     const maxSize = 20 * 1024 * 1024;
     
     if (file.size > maxSize) {
       setError("File size exceeds 20MB limit");
-      setShowLoading(false);
       return;
     }
     
-    // Create preview URL and update state
-    setSelectedFile(file);
-    setPreviewUrl(URL.createObjectURL(file));
-    
-    // Set automatic quality if enabled
-    if (autoQuality) {
-      setQuality(getAutoQuality(file, format));
+    const previewUrl = URL.createObjectURL(file);
+    setImageState(prev => ({
+      ...prev,
+      file,
+      previewUrl,
+      currentPreviewUrl: previewUrl
+    }));
+
+    if (settings.autoQuality && ['jpeg', 'webp'].includes(settings.format)) {
+      const autoQuality = getAutoQuality(file, settings.format);
+      setSettings(prev => ({
+        ...prev,
+        quality: autoQuality
+      }));
     }
-    setShowLoading(false);
-  }, [autoQuality, format]);
+  }, [settings.autoQuality, settings.format]);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    accept: {
-      'image/*': []
-    },
+    accept: { 'image/*': [] },
     maxFiles: 1,
-    onDrop: acceptedFiles => {
-      if (acceptedFiles.length > 0) {
-        handleFileDrop(acceptedFiles[0]);
-      }
-    }
+    onDrop: acceptedFiles => acceptedFiles[0] && handleFileDrop(acceptedFiles[0])
   });
 
-  // Effect for live preview updates when quality/format changes
   useEffect(() => {
+    if (!imageState.file || !supportsQuality) return;
+
     let isMounted = true;
-    let loadingTimeout: NodeJS.Timeout;
-    const previewUrl: string | null = null;
-
-    const updateLivePreview = async () => {
-      if (!selectedFile || !supportsQuality) {
-        setLivePreviewUrl(previewUrl);
-        return;
-      }
-
+    const debounceTimeout = setTimeout(async () => {
       try {
-        loadingTimeout = setTimeout(() => {
-          if (isMounted) {
-            setShowLoading(true);
-          }
-        }, 250);
-
-        const newPreviewUrl = await generatePreview(selectedFile, format, quality);
+        setLoadingStates(prev => ({ ...prev, preview: true }));
+        const newPreviewUrl = await generatePreview(
+          imageState.file!,
+          settings.format,
+          settings.quality
+        );
         
         if (isMounted) {
-          if (livePreviewUrl) {
-            setTimeout(() => URL.revokeObjectURL(livePreviewUrl), 100);
-          }
-          setLivePreviewUrl(newPreviewUrl);
-          setShowLoading(false);
+          setImageState(prev => {
+            if (prev.nextPreviewUrl && prev.nextPreviewUrl !== newPreviewUrl) {
+              URL.revokeObjectURL(prev.nextPreviewUrl);
+            }
+            return {
+              ...prev,
+              nextPreviewUrl: newPreviewUrl,
+              currentPreviewUrl: newPreviewUrl
+            };
+          });
         }
       } catch (error) {
-        console.error('Error updating live preview:', error);
+        console.error('Preview generation failed:', error);
       } finally {
         if (isMounted) {
-          clearTimeout(loadingTimeout);
+          setLoadingStates(prev => ({ ...prev, preview: false }));
         }
       }
-    };
-
-    const debounceTimer = setTimeout(updateLivePreview, 250);
+    }, 250);
 
     return () => {
       isMounted = false;
-      clearTimeout(loadingTimeout);
-      clearTimeout(debounceTimer);
+      clearTimeout(debounceTimeout);
     };
-  }, [selectedFile, quality, format, supportsQuality, previewUrl, livePreviewUrl]);
+  }, [imageState.file, settings.quality, settings.format, supportsQuality]);
 
-  // Automatically set quality based on file size and format
   useEffect(() => {
-    if (selectedFile && autoQuality) {
-      const automaticQuality = getAutoQuality(selectedFile, format);
-      setQuality(automaticQuality);
+    return () => {
+      if (imageState.previewUrl) URL.revokeObjectURL(imageState.previewUrl);
+      if (imageState.nextPreviewUrl) URL.revokeObjectURL(imageState.nextPreviewUrl);
+    };
+  }, []);
+
+  const handleFormatChange = useCallback((format: string) => {
+    setSettings(prev => {
+      if (prev.autoQuality && ['jpeg', 'webp'].includes(format) && imageState.file) {
+        return {
+          ...prev,
+          format,
+          quality: getAutoQuality(imageState.file, format)
+        };
+      }
+      return {
+        ...prev,
+        format,
+        quality: !['jpeg', 'webp'].includes(format) ? 100 : prev.quality
+      };
+    });
+  }, [imageState.file]);
+
+  useEffect(() => {
+    if (settings.autoQuality && imageState.file && ['jpeg', 'webp'].includes(settings.format)) {
+      const autoQuality = getAutoQuality(imageState.file, settings.format);
+      setSettings(prev => ({
+        ...prev,
+        quality: autoQuality
+      }));
     }
-  }, [selectedFile, format, autoQuality]);
+  }, [settings.autoQuality, settings.format, imageState.file]);
 
   const handleConvert = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedFile) return;
+    if (!imageState.file) return;
 
     try {
-      setConverting(true);
-      // Convert image using selected settings
-      const blob = await convertImage(selectedFile, format, quality);
+      setLoadingStates(prev => ({ ...prev, converting: true }));
+      const blob = await convertImage(
+        imageState.file,
+        settings.format,
+        settings.quality
+      );
       
-      // Trigger download with appropriate filename
       const url = URL.createObjectURL(blob);
+      const originalName = imageState.file.name.split('.').slice(0, -1).join('.');
       const a = document.createElement('a');
-      const originalName = selectedFile.name.split('.').slice(0, -1).join('.');
       a.href = url;
-      a.download = `${originalName}-${format}`;
+      a.download = `${originalName}-${settings.format}`;
       a.click();
       URL.revokeObjectURL(url);
     } catch (error) {
-      console.error('Error converting image:', error);
+      console.error('Conversion failed:', error);
+      setError('Failed to convert image');
     } finally {
-      setConverting(false);
+      setLoadingStates(prev => ({ ...prev, converting: false }));
     }
-  }, [selectedFile, format, quality]);
+  }, [imageState.file, settings.format, settings.quality]);
 
-  // Add useEffect to handle initial page load
+  const handleQualityChange = useCallback((value: number[]) => {
+    setSettings(prev => ({
+      ...prev,
+      quality: value[0],
+      autoQuality: false
+    }));
+  }, []);
+
   useEffect(() => {
     setPageReady(true);
   }, []);
 
-  // Modify the return statement
   if (!pageReady) {
     return (
       <div className="flex h-screen w-full items-center justify-center">
-        <div className="w-8 h-8 border-4 border-primary rounded-full border-t-transparent animate-spin"></div>
+        <div className="w-8 h-8 border-4 border-primary rounded-full border-t-transparent animate-spin" />
       </div>
     );
   }
 
   return (
-    <div className="flex h-screen w-full items-center justify-center px-4 gap-8 animate-in fade-in duration-500">
-      <div className="absolute top-4 right-4 flex items-center gap-2">
-        <GithubLink />
-        <ThemeToggle />
-      </div>
-      <Card className="min-w-[400px] max-w-lg">
-        <CardHeader>
-          <CardTitle className="text-2xl">imageconvert</CardTitle>
-          <CardDescription className="truncate">
-            {selectedFile ? selectedFile.name : "No file selected"}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form className="space-y-4" onSubmit={handleConvert}>
-            {error && (
-              <div className="text-red-500 text-sm">{error}</div>
-            )}
-            <div 
-              {...getRootProps()} 
-              className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors
-                ${isDragActive ? 'border-primary bg-primary/10' : selectedFile ? 'border-primary bg-green-100 dark:bg-green-900/20' : 'border-muted-foreground/25 hover:border-primary'}`}
-            >
-              <input {...getInputProps()} />
-              {isDragActive ? (
-                <p>Drop the image here...</p>
-              ) : selectedFile ? (
-                <p>Image selected - Click or drop to change</p>
-              ) : (
-                <div className="space-y-2">
-                  <p>Drag & drop an image here, or click to select</p>
-                  <p className="text-sm text-muted-foreground">Supports JPEG, PNG, WebP and AVIF</p>
-                </div>
-              )}
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="format">Convert to</Label>
-              <Select value={format} onValueChange={setFormat}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select format" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="jpeg">JPEG</SelectItem>
-                  <SelectItem value="webp">WebP</SelectItem>
-                  <SelectItem value="png">PNG</SelectItem>
-                  <SelectItem value="avif">AVIF</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+    <main className="container mx-auto px-4 py-8 max-w-5xl space-y-8">
+      <header className="rounded-lg bg-background border p-6 mb-8 shadow-sm">
+        <div className="flex justify-between items-center">
+          <div className="space-y-1">
+            <h1 className="text-4xl font-bold tracking-tight">imageconvert</h1>
+            <p className="text-muted-foreground text-lg">Convert and optimize your images instantly</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <GithubLink />
+            <ThemeToggle />
+          </div>
+        </div>
+      </header>
 
-            {supportsQuality && (
-              <div className="space-y-2">
-                <div className="flex justify-between">
-                  <Label htmlFor="quality">Quality</Label>
-                  <div className="flex items-center gap-2">
-                    <Label htmlFor="autoQuality" className="text-sm text-muted-foreground">Auto</Label>
-                    <Checkbox
-                      id="autoQuality"
-                      checked={autoQuality}
-                      onCheckedChange={(checked: boolean) => setAutoQuality(checked)}
-                    />
-                    <span className="text-sm text-muted-foreground">{quality}%</span>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div className="space-y-8">
+          <Card className="transition-all duration-200 hover:shadow-lg">
+            <CardContent className="pt-6">
+              <div 
+                {...getRootProps()} 
+                className={`rounded-lg p-12 text-center transition-colors duration-200 border-2 border-dashed relative
+                  ${isDragActive 
+                    ? 'border-primary bg-primary/5' 
+                    : imageState.file 
+                      ? 'border-primary/50 hover:border-primary' 
+                      : 'border-muted-foreground/25 hover:border-primary/50'
+                  }`}
+              >
+                {isDragActive && (
+                  <div className="absolute inset-0 bg-primary/5 backdrop-blur-[1px] rounded-lg flex items-center justify-center">
+                    <div className="text-center space-y-2">
+                      <Upload className="w-8 h-8 text-primary mx-auto animate-bounce" />
+                      <p className="text-xl font-medium text-primary">Drop to convert</p>
+                      <p className="text-sm text-muted-foreground">Release to begin optimization</p>
+                    </div>
+                  </div>
+                )}
+                <input {...getInputProps()} />
+                <div className="space-y-4">
+                  <div className="w-16 h-16 mx-auto rounded-full bg-muted/50 flex items-center justify-center">
+                    <ImageIcon className={`w-8 h-8 transition-colors ${imageState.file ? 'text-primary' : 'text-muted-foreground'}`} />
+                  </div>
+                  <div className="space-y-2">
+                    <p className="text-lg font-medium">
+                      {imageState.file ? (
+                        <span className="text-primary hover:underline cursor-pointer">Choose another image</span>
+                      ) : (
+                        "Drop your image here"
+                      )}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      {imageState.file ? (
+                        <>
+                          <span className="font-medium">{imageState.file.name}</span>
+                          <br />
+                          <span>({(imageState.file.size / 1024 / 1024).toFixed(2)}MB)</span>
+                        </>
+                      ) : (
+                        <>
+                          <span>Drag and drop or click to upload</span>
+                          <br />
+                          <span className="text-xs">Supports JPG, PNG, WebP (max 20MB)</span>
+                        </>
+                      )}
+                    </p>
                   </div>
                 </div>
-                <Slider
-                  id="quality"
-                  min={1}
-                  max={100}
-                  step={1}
-                  value={[quality]}
-                  onValueChange={(value) => {
-                    setAutoQuality(false);
-                    setQuality(value[0]);
-                  }}
-                />
               </div>
-            )}
+            </CardContent>
+          </Card>
 
-            <Button className="w-full" type="submit" disabled={!selectedFile || converting}>
-              {converting ? "Converting..." : "Download Image"}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
+          <Card className="transition-all duration-200 hover:shadow-lg">
+            <CardHeader>
+              <CardTitle className="text-2xl">Convert Settings</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleConvert} className="space-y-8">
+                <div className="space-y-6">
+                  <div className="space-y-3">
+                    <Label className="text-base">Output Format</Label>
+                    <Select value={settings.format} onValueChange={handleFormatChange}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="webp">WebP (Recommended)</SelectItem>
+                        <SelectItem value="jpeg">JPEG</SelectItem>
+                        <SelectItem value="png">PNG</SelectItem>
+                        <SelectItem value="avif">AVIF (Beta)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
 
-      {previewUrl && (
-        <Card className="min-w-[400px] max-w-lg">
-          <CardContent className="pt-6">
-            <div className="relative aspect-square">
-              {showLoading ? (
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="w-8 h-8 border-4 border-primary rounded-full border-t-transparent animate-spin"></div>
+                  {supportsQuality && (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-base">Quality</Label>
+                        <div className="flex items-center gap-3">
+                          <Label htmlFor="autoQuality" className="text-sm font-normal">Auto-optimize</Label>
+                          <Checkbox
+                            id="autoQuality"
+                            className="transition-transform hover:scale-105"
+                            checked={settings.autoQuality}
+                            onCheckedChange={(checked: boolean) => 
+                              setSettings(prev => ({ ...prev, autoQuality: checked }))}
+                          />
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <Slider
+                          className="flex-1"
+                          min={1}
+                          max={100}
+                          step={1}
+                          value={[settings.quality]}
+                          onValueChange={handleQualityChange}
+                        />
+                        <span className="w-12 text-right text-muted-foreground">
+                          {settings.quality}%
+                        </span>
+                      </div>
+                    </div>
+                  )}
                 </div>
-              ) : (
+
+                <Button 
+                  className="w-full transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]" 
+                  type="submit" 
+                  size="lg"
+                  disabled={!imageState.file || loadingStates.converting}
+                >
+                  {loadingStates.converting ? (
+                    <>
+                      <div className="w-5 h-5 border-2 border-white rounded-full border-t-transparent animate-spin mr-3" />
+                      Converting...
+                    </>
+                  ) : (
+                    'Download Converted Image'
+                  )}
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+        </div>
+
+        {imageState.previewUrl && (
+          <Card className="lg:sticky lg:top-8 transition-all duration-200 hover:shadow-lg">
+            <CardHeader className="space-y-3">
+              <CardTitle className="text-2xl">Preview</CardTitle>
+              {imageState.file && (
+                <CardDescription className="text-base">
+                  Original size: {(imageState.file.size / 1024 / 1024).toFixed(2)}MB
+                </CardDescription>
+              )}
+            </CardHeader>
+            <CardContent>
+              <div className="relative aspect-square bg-[url('/grid.svg')] dark:bg-zinc-900/50 rounded-lg overflow-hidden shadow-inner">
                 <Image
-                  src={supportsQuality ? (livePreviewUrl || previewUrl) : previewUrl}
-                  alt="Preview"
+                  src={imageState.previewUrl}
+                  alt="Original"
                   fill
-                  className="object-contain preview-image"
+                  className="object-contain"
                   priority
                 />
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-    </div>
+                
+                {supportsQuality && imageState.currentPreviewUrl && (
+                  <Image
+                    src={imageState.currentPreviewUrl}
+                    alt="Preview"
+                    fill
+                    className={`object-contain transition-opacity duration-300 ${
+                      loadingStates.preview ? 'opacity-70' : 'opacity-100'
+                    }`}
+                    priority
+                  />
+                )}
+                
+                {loadingStates.preview && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-background/60 backdrop-blur-sm transition-all duration-300">
+                    <div className="w-10 h-10 border-4 border-primary rounded-full border-t-transparent animate-spin" />
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    </main>
   );
 }
